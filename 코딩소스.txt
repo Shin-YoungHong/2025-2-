@@ -1,0 +1,447 @@
+1. Stopwatch(TOP module)
+module Stopwatch (
+input wire mclk,
+input wire rst_n,
+input wire [2:0] SW,
+output wire [7:0] LED,
+output wire [6:0] FND1,
+output wire [6:0] FND2,
+output wire [6:0] FND3,
+output wire [6:0] FND4,
+output wire [6:0] FND5,
+output wire [6:0] FND6
+);
+
+wire run_stop_pulse;
+wire reset_pulse;
+wire lap_pulse;
+wire timer_en;
+wire timer_rst;
+wire lap_strobe;
+wire display_mode;
+wire error_sig;
+wire half_sec_tick;
+wire [6:0] min_cnt;
+wire [5:0] sec_cnt;
+wire [6:0] ms_cnt;
+
+SwitchInterface w_SwitchInterface (
+.rst_n(rst_n),
+.mclk(mclk),
+.SW(SW),
+.run_stop_pulse(run_stop_pulse),
+.reset_pulse(reset_pulse),
+.lap_pulse(lap_pulse)
+);
+
+State_Machine w_State_Machine (
+.rst_n(rst_n),
+.mclk(mclk),
+.reset_pulse(reset_pulse),
+.lap_pulse(lap_pulse),
+.run_stop_pulse(run_stop_pulse),
+.timer_en(timer_en),
+.timer_rst(timer_rst),
+.lap_strobe(lap_strobe),
+.display_mode(display_mode),
+.error_sig(error_sig)
+);
+
+Timer w_Timer (
+.rst_n(rst_n),
+.mclk(mclk),
+.timer_en(timer_en),
+.timer_rst(timer_rst),
+.half_sec_tick(half_sec_tick),
+.min_cnt(min_cnt),
+.sec_cnt(sec_cnt),
+.ms_cnt(ms_cnt)
+);
+
+ledDriver w_ledDriver(
+.rst_n(rst_n),
+.mclk(mclk),
+.half_sec_tick(half_sec_tick),
+.timer_en(timer_en),
+.timer_rst(timer_rst),
+.LED(LED)
+);
+
+segDriver w_segDriver(
+.rst_n(rst_n),
+.mclk(mclk),
+.lap_strobe(lap_strobe),
+.display_mode(display_mode),
+.min_cnt(min_cnt),
+.sec_cnt(sec_cnt),
+.ms_cnt(ms_cnt),
+.timer_en(timer_en),
+.half_sec_tick(half_sec_tick),
+.error_sig(error_sig),
+.FND1(FND1),
+.FND2(FND2),
+.FND3(FND3),
+.FND4(FND4),
+.FND5(FND5),
+.FND6(FND6)
+);
+
+endmodule
+
+-------------------------------------------------------------------------
+
+2. segDriver
+module segDriver(
+input wire mclk,
+input wire rst_n,
+input wire [6:0] ms_cnt,
+input wire [5:0] sec_cnt,
+input wire [6:0] min_cnt,
+input wire lap_strobe,
+input wire display_mode,
+input wire timer_en,
+input wire half_sec_tick,
+input wire error_sig,
+output reg [6:0] FND1,
+output reg [6:0] FND2,
+output reg [6:0] FND3,
+output reg [6:0] FND4,
+output reg [6:0] FND5,
+output reg [6:0] FND6
+);
+
+reg [6:0] lap_ms;
+reg [5:0] lap_sec;
+reg [6:0] lap_min;
+
+always @(posedge mclk or negedge rst_n) begin
+if (!rst_n) begin
+lap_ms <= 0; lap_sec <= 0; lap_min <= 0;
+end else if (lap_strobe) begin
+lap_ms <= ms_cnt; lap_sec <= sec_cnt; lap_min <= min_cnt;
+end
+end
+
+reg [6:0] disp_ms;
+reg [5:0] disp_sec;
+reg [6:0] disp_min;
+
+always @(*) begin
+if (display_mode == 1) begin
+disp_ms = lap_ms; disp_sec = lap_sec; disp_min = lap_min;
+end else begin
+disp_ms = ms_cnt; disp_sec = sec_cnt; disp_min = min_cnt;
+end
+end
+
+reg [3:0] ms_ten, ms_one;
+reg [3:0] sec_ten, sec_one;
+reg [3:0] min_ten, min_one;
+
+always @(*) begin
+ms_ten = disp_ms / 10; ms_one = disp_ms % 10;
+sec_ten = disp_sec / 10; sec_one = disp_sec % 10;
+min_ten = disp_min / 10; min_one = disp_min % 10;
+end
+
+function [6:0] seg7;
+input [3:0] num;
+begin
+case(num)
+4'd0: seg7 = 7'b1111110;
+4'd1: seg7 = 7'b0110000;
+4'd2: seg7 = 7'b1101101;
+4'd3: seg7 = 7'b1111001;
+4'd4: seg7 = 7'b0110011;
+4'd5: seg7 = 7'b1011011;
+4'd6: seg7 = 7'b1011111;
+4'd7: seg7 = 7'b1110010;
+4'd8: seg7 = 7'b1111111;
+4'd9: seg7 = 7'b1111011;
+4'd10: seg7 = 7'b1001111;
+4'd11: seg7 = 7'b0000101;
+default: seg7 = 7'b0000000;
+endcase
+end
+endfunction
+
+wire is_time_non_zero = (|ms_cnt) | (|sec_cnt) | (|min_cnt);
+
+always @(*) begin
+if (error_sig) begin
+FND4 = seg7(4'd10);
+FND5 = seg7(4'd11);
+FND6 = seg7(4'd11);
+FND3 = 7'b0000000;
+FND2 = 7'b0000000;
+FND1 = 7'b0000000;
+end
+else if (!timer_en && is_time_non_zero && half_sec_tick) begin
+FND6 = 7'b0000000;
+FND5 = 7'b0000000;
+FND4 = 7'b0000000;
+FND3 = 7'b0000000;
+FND2 = 7'b0000000;
+FND1 = 7'b0000000;
+end
+else begin
+FND6 = seg7(ms_one); // ms 일의 자리
+FND5 = seg7(ms_ten); // ms 십의 자리
+FND4 = seg7(sec_one); // sec 일의 자리
+FND3 = seg7(sec_ten); // sec 십의 자리
+FND2 = seg7(min_one); // min 일의 자리
+FND1 = seg7(min_ten); // min 십의 자리
+end
+end
+
+endmodule
+
+--------------------------------------------------------------------------------
+
+3. ledDriver
+module ledDriver(
+input wire mclk,
+input wire rst_n,
+input wire timer_en,
+input wire half_sec_tick,
+input wire timer_rst,
+output reg [7:0] LED
+);
+
+always @(posedge mclk or negedge rst_n) begin
+if (!rst_n) begin
+LED <= 8'b00000000;
+end
+else if (timer_rst) begin
+LED <= 8'b00000000;
+end
+else if (timer_en && half_sec_tick) begin
+LED <= ~LED;
+end
+else begin
+LED <= LED;
+end
+end
+
+endmodule
+
+--------------------------------------------------------------------------------------------------------------------
+
+4. State_Machine
+module State_Machine (
+input wire rst_n,
+input wire mclk,
+input wire reset_pulse,
+input wire lap_pulse,
+input wire run_stop_pulse,
+output reg timer_en,
+output reg timer_rst,
+output reg lap_strobe,
+output reg display_mode,
+output reg error_sig
+);
+
+localparam [1:0]
+STOP = 2'b00,
+RUN = 2'b01,
+LAP_DISPLAY = 2'b10,
+ERROR_STATE = 2'b11;
+
+reg [1:0] current_state;
+reg [1:0] next_state;
+reg [1:0] previous_state;
+reg [19:0] err_cnt;
+
+always @(posedge mclk or negedge rst_n) begin
+if (!rst_n) begin
+current_state <= STOP;
+err_cnt <= 0;
+previous_state <= STOP;
+end else begin
+current_state <= next_state;
+
+if (current_state == ERROR_STATE)
+err_cnt <= err_cnt + 1;
+else
+err_cnt <= 0;
+
+if ((current_state == RUN || current_state == LAP_DISPLAY) && reset_pulse) begin
+previous_state <= current_state;
+end
+end
+end
+
+always @(*) begin
+next_state = current_state;
+
+case (current_state)
+STOP: begin
+if (reset_pulse) next_state = STOP;
+else if (run_stop_pulse) next_state = RUN;
+end
+RUN: begin
+if (lap_pulse) next_state = LAP_DISPLAY;
+else if (run_stop_pulse) next_state = STOP;
+else if (reset_pulse) next_state = ERROR_STATE;
+end
+LAP_DISPLAY: begin
+if (run_stop_pulse) next_state = STOP;
+else if (lap_pulse) next_state = RUN;
+else if (reset_pulse) next_state = ERROR_STATE;
+end
+ERROR_STATE: begin
+if (err_cnt >= 20'd999_999)
+next_state = previous_state;
+else
+next_state = ERROR_STATE;
+end
+default: next_state = STOP;
+endcase
+end
+
+always @(*) begin
+timer_en = 1'b0;
+display_mode = 1'b0;
+timer_rst = 1'b0;
+lap_strobe = 1'b0;
+error_sig = 1'b0;
+
+case (current_state)
+STOP: begin
+timer_en = 1'b0;
+if (reset_pulse) timer_rst = 1'b1;
+end
+RUN: begin
+timer_en = 1'b1;
+if (lap_pulse) lap_strobe = 1'b1;
+end
+LAP_DISPLAY: begin
+timer_en = 1'b1;
+display_mode = 1'b1;
+end
+ERROR_STATE: begin
+timer_en = 1'b1;
+error_sig = 1'b1;
+end
+endcase
+end
+
+endmodule
+
+------------------------------------------------------------------------------------------------------------------------------------
+
+5. Timer
+module Timer (
+input wire timer_en,
+input wire timer_rst,
+input wire mclk,
+input wire rst_n,
+output reg half_sec_tick,
+output reg [6:0] min_cnt,
+output reg [5:0] sec_cnt,
+output reg [6:0] ms_cnt
+);
+
+reg [13:0] clk_div;
+wire tick;
+assign tick = (clk_div == 14'd9999);
+
+reg [19:0] blink_cnt;
+always @(posedge mclk or negedge rst_n) begin
+if(!rst_n) blink_cnt <= 0;
+else blink_cnt <= blink_cnt + 1;
+end
+wire blink_on = blink_cnt[19];
+
+always @(posedge mclk or negedge rst_n) begin
+if (!rst_n) begin
+clk_div <= 14'd0;
+ms_cnt <= 7'd0;
+sec_cnt <= 6'd0;
+min_cnt <= 7'd0;
+half_sec_tick <= 1'b0;
+end
+else begin
+half_sec_tick <= 1'b0;
+if (timer_rst) begin
+clk_div <= 14'd0;
+ms_cnt <= 7'd0;
+sec_cnt <= 6'd0;
+min_cnt <= 7'd0;
+end
+else if (timer_en) begin
+if (tick) begin
+clk_div <= 14'd0;
+end else begin
+clk_div <= clk_div + 1'b1;
+end
+
+if (tick) begin
+if (ms_cnt == 7'd49 || ms_cnt == 7'd99) begin
+half_sec_tick <= 1'b1;
+end
+
+if (ms_cnt == 7'd99) begin
+ms_cnt <= 7'd0;
+if (sec_cnt == 6'd59) begin
+sec_cnt <= 6'd0;
+if(min_cnt == 7'd99) begin
+min_cnt <= 7'd0;
+end else begin
+min_cnt <= min_cnt + 1'b1;
+end
+end else begin
+sec_cnt <= sec_cnt + 1'b1;
+end
+end else begin
+ms_cnt <= ms_cnt + 1'b1;
+end
+end
+end
+else if(!timer_en && (min_cnt || sec_cnt || ms_cnt) && blink_on) begin
+half_sec_tick <= 1'b1;
+end
+end
+end
+
+endmodule
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+6. module SwitchInterface (
+input wire mclk,
+input wire [2:0] SW,
+input wire rst_n,
+output reg run_stop_pulse,
+output reg reset_pulse,
+output reg lap_pulse
+);
+
+reg [2:0] SW_INP_z1;
+reg [2:0] SW_INP_z2;
+reg [2:0] SW_INP_z3;
+
+always @(posedge mclk or negedge rst_n)
+begin
+if(!rst_n)
+begin
+SW_INP_z1 <= 3'b000;
+SW_INP_z2 <= 3'b000;
+SW_INP_z3 <= 3'b000;
+run_stop_pulse <= 1'b0;
+reset_pulse <= 1'b0;
+lap_pulse <= 1'b0;
+end
+else
+begin
+SW_INP_z1 <= SW;
+SW_INP_z2 <= SW_INP_z1;
+SW_INP_z3 <= SW_INP_z2;
+
+run_stop_pulse <= (!SW_INP_z3[0] && SW_INP_z2[0]);
+reset_pulse <= (!SW_INP_z3[1] && SW_INP_z2[1]);
+lap_pulse <= (!SW_INP_z3[2] && SW_INP_z2[2]);
+end
+end
+
+endmodule

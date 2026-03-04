@@ -13,4 +13,3 @@ FPGA/Verilog(또는 사용한 언어)를 이용한 정밀 디지털 스톱워치
 
 ## 📁 포함 자료
 * **Source Code:** 모듈별 설계 코드 및 TOP 모듈 소스
-* **Design Documents:** 시스템 블록 다이어그램 및 설계 명세서

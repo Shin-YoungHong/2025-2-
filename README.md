@@ -1,15 +1,23 @@
-# ⏱️ 디지털 스톱워치 설계 및 구현
-FPGA/Verilog(또는 사용한 언어)를 이용한 정밀 디지털 스톱워치 설계 프로젝트입니다.
+# FPGA Digital Stopwatch (Verilog)
 
-## 🛠️ 내가 담당한 역할 (Main Developer)
-* **시스템 아키텍처 설계:** 전체 시스템의 흐름을 정의하는 **블록 다이어그램(Block Diagram)** 구성.
-* **TOP 모듈 개발:** 하위 모듈들을 통합하고 전체 시스템의 데이터 흐름을 제어하는 최상위(TOP) 모듈 설계.
-* **인터페이스 모듈 설계:** 사용자 입력을 처리하는 **Switch-Interface** 모듈 코드 작성.
+Modular digital stopwatch designed and verified in **Verilog HDL** for **Basic Electrical & Electronic Engineering Lab (2)**.  
+Features millisecond-precision timing, lap-time display, invalid-input error handling, and visual stop-state feedback on 6-digit 7-segment displays (FND) and LEDs.
 
-## ✨ 추가 구현 기능 (Key Features)
-단순한 스톱워치 기능을 넘어, 사용자 편의성과 예외 처리를 위한 기능을 추가로 구현했습니다.
-* **에러 핸들링:** 스톱워치 작동 중 잘못된 버튼 입력 시 **Error 메시지 출력** 기능 구현.
-* **상태 알림 시각화:** Stop 상태일 때 디스플레이가 **깜빡(Blinking)**이며 현재 상태를 직관적으로 알리는 기능 추가.
+## Module Architecture
+```text
+Stopwatch (TOP)
+├── SwitchInterface   # Debouncing & pulse generation (run/stop, reset, lap)
+├── State_Machine     # Core FSM controlling run, stop, lap, and error states
+├── Timer             # Counter logic generating min_cnt, sec_cnt, ms_cnt, half_sec_tick
+├── ledDriver         # Status LED control synchronized with timer_en / half_sec_tick
+└── segDriver         # 6-digit 7-segment display driver with lap & error rendering
+```
 
-## 📁 포함 자료
-* **Source Code:** 모듈별 설계 코드 및 TOP 모듈 소스
+## My Role
+- **System Architecture & TOP Module (`Stopwatch.v`):** Defined inter-module wire interfaces and integrated all five hardware blocks into the top-level design.
+- **Switch Interface (`SwitchInterface.v`):** Designed user input conditioning to generate clean single-cycle control pulses (`run_stop_pulse`, `reset_pulse`, `lap_pulse`).
+
+## Key Hardware Features
+- **Invalid Input Error Handling:** Detects illegal button transitions inside `State_Machine` and asserts `error_sig` to display an error indicator on the FND.
+- **Stop-State Blinking Feedback:** Uses `half_sec_tick` in `segDriver` to blink the display while paused so operating state is immediately distinguishable.
+- **Testbench Verification:** Verified timing and state transitions using `Stopwatch_tb.v`.
